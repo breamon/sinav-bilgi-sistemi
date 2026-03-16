@@ -1,0 +1,21 @@
+# environment
+.env
+.env.*
+
+# build
+bin/
+dist/
+tmp/
+
+# dependencies
+vendor/
+
+# logs
+*.log
+
+# mac
+.DS_Store
+
+# editors
+.idea/
+.vscode/
