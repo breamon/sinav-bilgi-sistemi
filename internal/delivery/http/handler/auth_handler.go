@@ -2,12 +2,9 @@ package handler
 
 import (
 	"net/http"
-	"strings"
-
-	"github.com/gin-gonic/gin"
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/service"
-	"github.com/breamon/sinav-bilgi-sistemi/internal/utils"
+	"github.com/gin-gonic/gin"
 )
 
 type AuthHandler struct {
@@ -37,7 +34,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
 
@@ -48,8 +45,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"user":  user,
 		"token": token,
+		"user":  user,
 	})
 }
 
@@ -57,7 +54,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
 
@@ -68,35 +65,31 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"user":  user,
 		"token": token,
+		"user":  user,
 	})
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header"})
+	userIDValue, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
 		return
 	}
 
-	parts := strings.Split(authHeader, "Bearer ")
-	if len(parts) != 2 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header"})
+	userID, ok := userIDValue.(int64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
 		return
 	}
 
-	claims, err := utils.ParseJWT(parts[1], h.jwtSecret)
+	user, err := h.authService.Me(userID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user"})
 		return
 	}
 
-	user, err := h.authService.Me(claims.UserID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"user": user})
+	c.JSON(http.StatusOK, gin.H{
+		"user": user,
+	})
 }

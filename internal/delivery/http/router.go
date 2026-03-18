@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/delivery/http/handler"
+	"github.com/breamon/sinav-bilgi-sistemi/internal/delivery/http/middleware"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/repository/postgres"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/service"
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,9 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 	examService := service.NewExamService(examRepo)
 	examHandler := handler.NewExamHandler(examService)
 
+	authMiddleware := middleware.AuthMiddleware(os.Getenv("JWT_SECRET"))
+	adminOnlyMiddleware := middleware.AdminOnlyMiddleware()
+
 	r.GET("/health", healthHandler.HealthCheck)
 
 	api := r.Group("/api/v1")
@@ -31,16 +35,21 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
-			auth.GET("/me", authHandler.Me)
+			auth.GET("/me", authMiddleware, authHandler.Me)
 		}
 
 		exams := api.Group("/exams")
 		{
-			exams.POST("", examHandler.Create)
 			exams.GET("", examHandler.List)
 			exams.GET("/:id", examHandler.GetByID)
-			exams.PUT("/:id", examHandler.Update)
-			exams.DELETE("/:id", examHandler.Delete)
+
+			admin := exams.Group("")
+			admin.Use(authMiddleware, adminOnlyMiddleware)
+			{
+				admin.POST("", examHandler.Create)
+				admin.PUT("/:id", examHandler.Update)
+				admin.DELETE("/:id", examHandler.Delete)
+			}
 		}
 	}
 

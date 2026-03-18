@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/domain"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/repository/postgres"
@@ -18,6 +19,20 @@ func NewAuthService(userRepo *postgres.UserRepository) *AuthService {
 }
 
 func (s *AuthService) Register(fullName, email, password string) (*domain.User, string, error) {
+	fullName = strings.TrimSpace(fullName)
+	email = strings.TrimSpace(strings.ToLower(email))
+	password = strings.TrimSpace(password)
+
+	if fullName == "" {
+		return nil, "", errors.New("full name is required")
+	}
+	if email == "" {
+		return nil, "", errors.New("email is required")
+	}
+	if password == "" {
+		return nil, "", errors.New("password is required")
+	}
+
 	existingUser, _ := s.userRepo.GetByEmail(email)
 	if existingUser != nil {
 		return nil, "", errors.New("email already exists")
@@ -44,10 +59,21 @@ func (s *AuthService) Register(fullName, email, password string) (*domain.User, 
 		return nil, "", err
 	}
 
+	user.PasswordHash = ""
 	return user, token, nil
 }
 
 func (s *AuthService) Login(email, password string) (*domain.User, string, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	password = strings.TrimSpace(password)
+
+	if email == "" {
+		return nil, "", errors.New("email is required")
+	}
+	if password == "" {
+		return nil, "", errors.New("password is required")
+	}
+
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
 		return nil, "", errors.New("invalid email or password")
@@ -62,9 +88,16 @@ func (s *AuthService) Login(email, password string) (*domain.User, string, error
 		return nil, "", err
 	}
 
+	user.PasswordHash = ""
 	return user, token, nil
 }
 
 func (s *AuthService) Me(userID int64) (*domain.User, error) {
-	return s.userRepo.GetByID(userID)
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	user.PasswordHash = ""
+	return user, nil
 }

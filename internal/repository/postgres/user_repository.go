@@ -1,9 +1,8 @@
 package postgres
 
 import (
-	"github.com/jmoiron/sqlx"
-
 	"github.com/breamon/sinav-bilgi-sistemi/internal/domain"
+	"github.com/jmoiron/sqlx"
 )
 
 type UserRepository struct {
@@ -39,8 +38,7 @@ func (r *UserRepository) GetByEmail(email string) (*domain.User, error) {
 		WHERE email = $1
 	`
 
-	err := r.db.Get(&user, query, email)
-	if err != nil {
+	if err := r.db.Get(&user, query, email); err != nil {
 		return nil, err
 	}
 
@@ -56,8 +54,7 @@ func (r *UserRepository) GetByID(id int64) (*domain.User, error) {
 		WHERE id = $1
 	`
 
-	err := r.db.Get(&user, query, id)
-	if err != nil {
+	if err := r.db.Get(&user, query, id); err != nil {
 		return nil, err
 	}
 
