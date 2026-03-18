@@ -36,8 +36,23 @@ func (s *ExamService) Create(exam *domain.Exam) error {
 	return s.examRepo.Create(exam)
 }
 
-func (s *ExamService) List() ([]domain.Exam, error) {
-	return s.examRepo.List()
+func (s *ExamService) List(page, limit int, source, status string) ([]domain.Exam, error) {
+	if page <= 0 {
+		page = 1
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	if limit > 100 {
+		limit = 100
+	}
+
+	source = strings.TrimSpace(source)
+	status = strings.TrimSpace(status)
+
+	return s.examRepo.List(page, limit, source, status)
 }
 
 func (s *ExamService) GetByID(id int64) (*domain.Exam, error) {

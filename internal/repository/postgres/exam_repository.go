@@ -1,6 +1,9 @@
 package postgres
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/breamon/sinav-bilgi-sistemi/internal/domain"
 	"github.com/jmoiron/sqlx"
 )
@@ -28,16 +31,40 @@ func (r *ExamRepository) Create(exam *domain.Exam) error {
 	).Scan(&exam.ID, &exam.CreatedAt, &exam.UpdatedAt)
 }
 
-func (r *ExamRepository) List() ([]domain.Exam, error) {
+func (r *ExamRepository) List(page, limit int, source, status string) ([]domain.Exam, error) {
 	var exams []domain.Exam
 
-	query := `
+	baseQuery := `
 		SELECT id, source, title, status, created_at, updated_at
 		FROM exams
-		ORDER BY id DESC
 	`
 
-	err := r.db.Select(&exams, query)
+	var conditions []string
+	var args []interface{}
+	argIndex := 1
+
+	if source != "" {
+		conditions = append(conditions, fmt.Sprintf("source = $%d", argIndex))
+		args = append(args, source)
+		argIndex++
+	}
+
+	if status != "" {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
+		args = append(args, status)
+		argIndex++
+	}
+
+	if len(conditions) > 0 {
+		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	offset := (page - 1) * limit
+
+	baseQuery += fmt.Sprintf(" ORDER BY id DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
+	args = append(args, limit, offset)
+
+	err := r.db.Select(&exams, baseQuery, args...)
 	return exams, err
 }
 

@@ -34,13 +34,26 @@ func (h *ExamHandler) Create(c *gin.Context) {
 }
 
 func (h *ExamHandler) List(c *gin.Context) {
-	exams, err := h.examService.List()
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	source := c.Query("source")
+	status := c.Query("status")
+
+	exams, err := h.examService.List(page, limit, source, status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list exams"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": exams})
+	c.JSON(http.StatusOK, gin.H{
+		"items": exams,
+		"pagination": gin.H{
+			"page":   page,
+			"limit":  limit,
+			"source": source,
+			"status": status,
+		},
+	})
 }
 
 func (h *ExamHandler) GetByID(c *gin.Context) {
