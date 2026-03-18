@@ -35,7 +35,7 @@ func (r *ExamRepository) List(page, limit int, source, status string) ([]domain.
 	var exams []domain.Exam
 
 	baseQuery := `
-		SELECT id, source, title, status, created_at, updated_at
+		SELECT id, source, external_id, title, status, created_at, updated_at
 		FROM exams
 	`
 
@@ -60,7 +60,6 @@ func (r *ExamRepository) List(page, limit int, source, status string) ([]domain.
 	}
 
 	offset := (page - 1) * limit
-
 	baseQuery += fmt.Sprintf(" ORDER BY id DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
 	args = append(args, limit, offset)
 
@@ -72,7 +71,7 @@ func (r *ExamRepository) GetByID(id int64) (*domain.Exam, error) {
 	var exam domain.Exam
 
 	query := `
-		SELECT id, source, title, status, created_at, updated_at
+		SELECT id, source, external_id, title, status, created_at, updated_at
 		FROM exams
 		WHERE id = $1
 	`
@@ -109,4 +108,25 @@ func (r *ExamRepository) Delete(id int64) error {
 	query := `DELETE FROM exams WHERE id = $1`
 	_, err := r.db.Exec(query, id)
 	return err
+}
+
+func (r *ExamRepository) UpsertBySourceAndExternalID(exam *domain.Exam) error {
+	query := `
+		INSERT INTO exams (source, external_id, title, status)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL
+		DO UPDATE SET
+			title = EXCLUDED.title,
+			status = EXCLUDED.status,
+			updated_at = NOW()
+		RETURNING id, created_at, updated_at
+	`
+
+	return r.db.QueryRowx(
+		query,
+		exam.Source,
+		exam.ExternalID,
+		exam.Title,
+		exam.Status,
+	).Scan(&exam.ID, &exam.CreatedAt, &exam.UpdatedAt)
 }

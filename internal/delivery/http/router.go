@@ -5,6 +5,8 @@ import (
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/delivery/http/handler"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/delivery/http/middleware"
+	"github.com/breamon/sinav-bilgi-sistemi/internal/provider/mock"
+	"github.com/breamon/sinav-bilgi-sistemi/internal/provider/osym"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/repository/postgres"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/service"
 	"github.com/gin-gonic/gin"
@@ -23,6 +25,14 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 	examRepo := postgres.NewExamRepository(db)
 	examService := service.NewExamService(examRepo)
 	examHandler := handler.NewExamHandler(examService)
+
+	examMockProvider := mock.NewExamMockProvider()
+	examMockImportService := service.NewExamImportService(examRepo, examMockProvider)
+	examMockImportHandler := handler.NewExamImportHandler(examMockImportService)
+
+	examOSYMProvider := osym.NewExamOSYMProvider()
+	examOSYMImportService := service.NewExamImportService(examRepo, examOSYMProvider)
+	examOSYMImportHandler := handler.NewExamImportHandler(examOSYMImportService)
 
 	authMiddleware := middleware.AuthMiddleware(os.Getenv("JWT_SECRET"))
 	adminOnlyMiddleware := middleware.AdminOnlyMiddleware()
@@ -49,6 +59,8 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 				admin.POST("", examHandler.Create)
 				admin.PUT("/:id", examHandler.Update)
 				admin.DELETE("/:id", examHandler.Delete)
+				admin.POST("/import/mock", examMockImportHandler.Import)
+				admin.POST("/import/osym", examOSYMImportHandler.Import)
 			}
 		}
 	}

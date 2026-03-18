@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS ux_exams_source_external_id;
