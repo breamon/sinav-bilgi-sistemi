@@ -58,3 +58,41 @@ func (h *ExamHandler) GetByID(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"exam": exam})
 }
+
+func (h *ExamHandler) Update(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exam id"})
+		return
+	}
+
+	var exam domain.Exam
+	if err := c.ShouldBindJSON(&exam); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+
+	exam.ID = id
+
+	if err := h.examService.Update(&exam); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"exam": exam})
+}
+
+func (h *ExamHandler) Delete(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exam id"})
+		return
+	}
+
+	if err := h.examService.Delete(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete exam"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "exam deleted"})
+}

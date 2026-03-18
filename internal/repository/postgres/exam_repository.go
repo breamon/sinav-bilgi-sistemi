@@ -57,3 +57,29 @@ func (r *ExamRepository) GetByID(id int64) (*domain.Exam, error) {
 
 	return &exam, nil
 }
+
+func (r *ExamRepository) Update(exam *domain.Exam) error {
+	query := `
+		UPDATE exams
+		SET source = $1,
+		    title = $2,
+		    status = $3,
+		    updated_at = NOW()
+		WHERE id = $4
+		RETURNING updated_at
+	`
+
+	return r.db.QueryRowx(
+		query,
+		exam.Source,
+		exam.Title,
+		exam.Status,
+		exam.ID,
+	).Scan(&exam.UpdatedAt)
+}
+
+func (r *ExamRepository) Delete(id int64) error {
+	query := `DELETE FROM exams WHERE id = $1`
+	_, err := r.db.Exec(query, id)
+	return err
+}

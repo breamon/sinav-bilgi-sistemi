@@ -39,6 +39,8 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 			exams.POST("", examHandler.Create)
 			exams.GET("", examHandler.List)
 			exams.GET("/:id", examHandler.GetByID)
+			exams.PUT("/:id", examHandler.Update)
+			exams.DELETE("/:id", examHandler.Delete)
 		}
 	}
 
