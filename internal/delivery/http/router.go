@@ -17,6 +17,7 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 	r := gin.Default()
 
 	healthHandler := handler.NewHealthHandler()
+	mockOSYMHandler := handler.NewMockOSYMHandler()
 
 	userRepo := postgres.NewUserRepository(db)
 	authService := service.NewAuthService(userRepo)
@@ -26,18 +27,26 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 	examService := service.NewExamService(examRepo)
 	examHandler := handler.NewExamHandler(examService)
 
+	// Providers
 	examMockProvider := mock.NewExamMockProvider()
-	examMockImportService := service.NewExamImportService(examRepo, examMockProvider)
-	examMockImportHandler := handler.NewExamImportHandler(examMockImportService)
-
 	examOSYMProvider := osym.NewExamOSYMProvider()
+
+	// Import services
+	examMockImportService := service.NewExamImportService(examRepo, examMockProvider)
 	examOSYMImportService := service.NewExamImportService(examRepo, examOSYMProvider)
+
+	// Handlers
+	examMockImportHandler := handler.NewExamImportHandler(examMockImportService)
 	examOSYMImportHandler := handler.NewExamImportHandler(examOSYMImportService)
 
 	authMiddleware := middleware.AuthMiddleware(os.Getenv("JWT_SECRET"))
 	adminOnlyMiddleware := middleware.AdminOnlyMiddleware()
 
+	// health
 	r.GET("/health", healthHandler.HealthCheck)
+
+	// 🔥 mock osym endpoint
+	r.GET("/mock/osym/exams", mockOSYMHandler.GetExams)
 
 	api := r.Group("/api/v1")
 	{
