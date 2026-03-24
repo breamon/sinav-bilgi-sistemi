@@ -19,6 +19,7 @@ func NewRouter(db *sqlx.DB, redisClient *redis.Client) *gin.Engine {
 
 	healthHandler := handler.NewHealthHandler()
 	mockOSYMHandler := handler.NewMockOSYMHandler()
+	osymDebugHandler := handler.NewOSYMDebugHandler()
 
 	userRepo := postgres.NewUserRepository(db)
 	authService := service.NewAuthService(userRepo)
@@ -76,6 +77,12 @@ func NewRouter(db *sqlx.DB, redisClient *redis.Client) *gin.Engine {
 		importLogs.Use(authMiddleware, adminOnlyMiddleware)
 		{
 			importLogs.GET("", importLogHandler.List)
+		}
+
+		debug := api.Group("/debug")
+		debug.Use(authMiddleware, adminOnlyMiddleware)
+		{
+			debug.GET("/osym/raw", osymDebugHandler.RawSegments)
 		}
 	}
 

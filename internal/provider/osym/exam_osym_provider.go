@@ -9,6 +9,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/domain"
+	"golang.org/x/net/html"
 )
 
 type ExamOSYMProvider struct {
@@ -48,82 +49,63 @@ func (p *ExamOSYMProvider) FetchExams() ([]domain.Exam, error) {
 		return nil, err
 	}
 
-	return p.extractExamsFromCalendarPage(doc), nil
+	segments := extractDOMSegments(doc)
+	return p.extractExams(segments), nil
 }
 
-func (p *ExamOSYMProvider) extractExamsFromCalendarPage(doc *goquery.Document) []domain.Exam {
-	pageText := cleanText(doc.Text())
-
-	seen := make(map[string]bool)
+func (p *ExamOSYMProvider) extractExams(segments []string) []domain.Exam {
 	exams := make([]domain.Exam, 0)
+	seen := make(map[string]bool)
 
-	patterns := []string{
-		`2026-MSÜ`,
-		`2026-GUY $begin:math:text$ÖN BAŞVURU$end:math:text$`,
-		`2026-GUY`,
-		`2026-YÖKDİL/1`,
-		`2026-MEB-EKYS`,
-		`2026-TUS 1\. Dönem`,
-		`2026-STS Tıp Doktorluğu 1\. Dönem`,
-		`2026-DİB-MBSTS`,
-		`2026-YDS/1`,
-		`2026-TR-YÖS/1`,
-		`2026-EKPSS`,
-		`2026-EKPSS/KURA`,
-		`2026-HMGS/1`,
-		`2026-DUS 1\.Dönem`,
-		`2026-STS Diş Hekimliği 1\.Dönem`,
-		`2026-YDUS`,
-		`2026-ALES/1`,
-		`2026-STS Öğretmenlik`,
-		`2026-YKS 1\. Oturum $begin:math:text$TYT$end:math:text$`,
-		`2026-YKS 2\. Oturum $begin:math:text$AYT$end:math:text$`,
-		`2026-YKS 3\. Oturum $begin:math:text$YDT$end:math:text$`,
-		`2026-MEB-AGS $begin:math:text$Akademi Giriş Sınavı \\\(AGS$end:math:text$, Öğretmenlik Alan Bilgisi Testi $begin:math:text$ÖABT$end:math:text$\)`,
-		`2026-DGS`,
-		`2026-ALES/2`,
-		`2026-YÖKDİL/2`,
-		`2026-ÖZYES`,
-		`2026-TUS 2\. Dönem`,
-		`2026-STS Tıp Doktorluğu 2\. Dönem`,
-		`2026-KPSS Lisans $begin:math:text$Genel Yetenek\-Genel Kültür$end:math:text$`,
-		`2026-KPSS Lisans $begin:math:text$Alan Bilgisi$end:math:text$ 1\. gün`,
-		`2026-KPSS Lisans $begin:math:text$Alan Bilgisi$end:math:text$ 2\. gün`,
-		`2026-HMGS/2`,
-		`2026-İYÖS`,
-		`2026-KPSS Ön Lisans`,
-		`2026-TR-YÖS/2`,
-		`2026-BKUBTS`,
-		`2026-KPSS Ortaöğretim`,
-		`2026-DUS 2\.Dönem`,
-		`2026-STS Diş Hekimliği 2\.Dönem`,
-		`2026-KPSS Din Hizmetleri Alan Bilgisi Testi $begin:math:text$DHBT$end:math:text$`,
-		`2026-EUS`,
-		`2026-STS Eczacılık`,
-		`2026-YDS/2`,
-		`2026-ALES/3`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(pageText, -1)
-
-		for _, match := range matches {
-			title := strings.TrimSpace(match)
-			externalID := slugify(title)
-
-			if seen[externalID] {
-				continue
-			}
-			seen[externalID] = true
-
-			exams = append(exams, domain.Exam{
-				Source:     "osym",
-				ExternalID: stringPtr(externalID),
-				Title:      title,
-				Status:     "published",
-			})
+	for i := 0; i < len(segments); i++ {
+		title, ok := extractExamTitleFromSegment(segments[i])
+		if !ok {
+			continue
 		}
+
+		// "(ÖN BAŞVURU)" gibi devam segmentlerini title'a ekle
+		if i+1 < len(segments) && isParentheticalSegment(segments[i+1]) {
+			title = strings.TrimSpace(title + " " + segments[i+1])
+		}
+		if i+2 < len(segments) && isParentheticalSegment(segments[i+2]) && !strings.Contains(title, segments[i+2]) {
+			title = strings.TrimSpace(title + " " + segments[i+2])
+		}
+
+		externalID := slugify(title)
+		if seen[externalID] {
+			continue
+		}
+		seen[externalID] = true
+
+		exam := domain.Exam{
+			Source:     "osym",
+			ExternalID: stringPtr(externalID),
+			Title:      title,
+			Status:     "published",
+		}
+
+		end := i + 1
+		for end < len(segments) {
+			if nextTitle, ok := extractExamTitleFromSegment(segments[end]); ok && nextTitle != title {
+				break
+			}
+			end++
+		}
+
+		block := segments[i:end]
+
+		exam.ExamDate = findFirstDateInLabelLine(block, "Sınav Tarihi")
+		appDates := findAllDatesInLabelLine(block, "Başvuru Tarihleri")
+		if len(appDates) > 0 {
+			exam.ApplicationStartDate = appDates[0]
+		}
+		if len(appDates) > 1 {
+			exam.ApplicationEndDate = appDates[1]
+		}
+		exam.ResultDate = findFirstDateInLabelLine(block, "Sonuç Tarihi")
+
+		exams = append(exams, exam)
+		i = end - 1
 	}
 
 	if len(exams) == 0 {
@@ -147,16 +129,148 @@ func (p *ExamOSYMProvider) extractExamsFromCalendarPage(doc *goquery.Document) [
 	return exams
 }
 
-func cleanText(s string) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\t", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
+func extractDOMSegments(doc *goquery.Document) []string {
+	segments := make([]string, 0)
+	last := ""
 
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
+	doc.Find("body, body *").Each(func(_ int, s *goquery.Selection) {
+		if len(s.Nodes) == 0 {
+			return
+		}
+
+		text := ownText(s.Nodes[0])
+		text = collapseSpaces(strings.TrimSpace(text))
+		if text == "" {
+			return
+		}
+
+		if text == last {
+			return
+		}
+
+		segments = append(segments, text)
+		last = text
+	})
+
+	return segments
+}
+
+func ownText(n *html.Node) string {
+	var b strings.Builder
+	for child := n.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.TextNode {
+			b.WriteString(child.Data)
+			b.WriteString(" ")
+		}
+	}
+	return b.String()
+}
+
+func extractExamTitleFromSegment(seg string) (string, bool) {
+	seg = strings.TrimSpace(seg)
+	if seg == "" {
+		return "", false
 	}
 
-	return strings.TrimSpace(s)
+	idx := strings.Index(seg, "2026-")
+	if idx == -1 {
+		return "", false
+	}
+
+	title := strings.TrimSpace(seg[idx:])
+	if title == "" {
+		return "", false
+	}
+
+	return title, true
+}
+
+func isParentheticalSegment(seg string) bool {
+	seg = strings.TrimSpace(seg)
+	return strings.HasPrefix(seg, "(") && strings.HasSuffix(seg, ")")
+}
+
+func normalizeLabel(line string) string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimSuffix(line, ":")
+	return collapseSpaces(line)
+}
+
+func findFirstDateInLabelLine(block []string, label string) *time.Time {
+	label = normalizeLabel(label)
+
+	for _, line := range block {
+		if !strings.HasPrefix(normalizeLabel(line), label) {
+			continue
+		}
+
+		dates := extractDatesFromText(line)
+		if len(dates) > 0 {
+			return dates[0]
+		}
+	}
+
+	return nil
+}
+
+func findAllDatesInLabelLine(block []string, label string) []*time.Time {
+	label = normalizeLabel(label)
+
+	for _, line := range block {
+		if !strings.HasPrefix(normalizeLabel(line), label) {
+			continue
+		}
+
+		return extractDatesFromText(line)
+	}
+
+	return nil
+}
+
+func extractDatesFromText(text string) []*time.Time {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+
+	re := regexp.MustCompile(`\d{2}\.\d{2}\.\d{4}( \d{2}:\d{2})?`)
+	matches := re.FindAllString(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	results := make([]*time.Time, 0, len(matches))
+	for _, m := range matches {
+		if t := parseOSYMDate(m); t != nil {
+			results = append(results, t)
+		}
+	}
+
+	return results
+}
+
+func parseOSYMDate(value string) *time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+
+	layouts := []string{
+		"02.01.2006 15:04",
+		"02.01.2006",
+	}
+
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, value); err == nil {
+			return &t
+		}
+	}
+
+	return nil
+}
+
+func collapseSpaces(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func slugify(s string) string {
