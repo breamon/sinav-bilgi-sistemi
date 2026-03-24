@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"os"
 	"strings"
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/domain"
@@ -15,32 +14,36 @@ type AuthService struct {
 }
 
 func NewAuthService(userRepo *postgres.UserRepository) *AuthService {
-	return &AuthService{userRepo: userRepo}
+	return &AuthService{
+		userRepo: userRepo,
+	}
 }
 
-func (s *AuthService) Register(fullName, email, password string) (*domain.User, string, error) {
+func (s *AuthService) Register(fullName, email, password string) (*domain.User, error) {
 	fullName = strings.TrimSpace(fullName)
 	email = strings.TrimSpace(strings.ToLower(email))
 	password = strings.TrimSpace(password)
 
 	if fullName == "" {
-		return nil, "", errors.New("full name is required")
+		return nil, errors.New("full_name is required")
 	}
+
 	if email == "" {
-		return nil, "", errors.New("email is required")
+		return nil, errors.New("email is required")
 	}
+
 	if password == "" {
-		return nil, "", errors.New("password is required")
+		return nil, errors.New("password is required")
 	}
 
 	existingUser, _ := s.userRepo.GetByEmail(email)
 	if existingUser != nil {
-		return nil, "", errors.New("email already exists")
+		return nil, errors.New("email already exists")
 	}
 
 	hashedPassword, err := utils.HashPassword(password)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	user := &domain.User{
@@ -51,53 +54,40 @@ func (s *AuthService) Register(fullName, email, password string) (*domain.User, 
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
-	token, err := utils.GenerateJWT(user.ID, user.Email, user.Role, os.Getenv("JWT_SECRET"))
-	if err != nil {
-		return nil, "", err
-	}
-
-	user.PasswordHash = ""
-	return user, token, nil
+	return user, nil
 }
 
-func (s *AuthService) Login(email, password string) (*domain.User, string, error) {
+func (s *AuthService) Login(email, password string) (*domain.User, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	password = strings.TrimSpace(password)
 
 	if email == "" {
-		return nil, "", errors.New("email is required")
+		return nil, errors.New("email is required")
 	}
+
 	if password == "" {
-		return nil, "", errors.New("password is required")
+		return nil, errors.New("password is required")
 	}
 
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
-		return nil, "", errors.New("invalid email or password")
+		return nil, errors.New("invalid email or password")
 	}
 
-	if err := utils.CheckPassword(password, user.PasswordHash); err != nil {
-		return nil, "", errors.New("invalid email or password")
+	if !utils.CheckPasswordHash(password, user.PasswordHash) {
+		return nil, errors.New("invalid email or password")
 	}
 
-	token, err := utils.GenerateJWT(user.ID, user.Email, user.Role, os.Getenv("JWT_SECRET"))
-	if err != nil {
-		return nil, "", err
-	}
-
-	user.PasswordHash = ""
-	return user, token, nil
+	return user, nil
 }
 
-func (s *AuthService) Me(userID int64) (*domain.User, error) {
-	user, err := s.userRepo.GetByID(userID)
-	if err != nil {
-		return nil, err
+func (s *AuthService) GetUserByID(userID int64) (*domain.User, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
 	}
 
-	user.PasswordHash = ""
-	return user, nil
+	return s.userRepo.GetByID(userID)
 }

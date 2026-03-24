@@ -92,6 +92,33 @@ func (r *ExamRepository) List(page, limit int, source, status string) ([]domain.
 	return exams, err
 }
 
+func (r *ExamRepository) GetUpcoming(limit int) ([]domain.Exam, error) {
+	var exams []domain.Exam
+
+	query := `
+		SELECT
+			id,
+			source,
+			external_id,
+			title,
+			application_start_date,
+			application_end_date,
+			exam_date,
+			result_date,
+			status,
+			created_at,
+			updated_at
+		FROM exams
+		WHERE exam_date IS NOT NULL
+		  AND exam_date >= NOW()
+		ORDER BY exam_date ASC
+		LIMIT $1
+	`
+
+	err := r.db.Select(&exams, query, limit)
+	return exams, err
+}
+
 func (r *ExamRepository) GetByID(id int64) (*domain.Exam, error) {
 	var exam domain.Exam
 

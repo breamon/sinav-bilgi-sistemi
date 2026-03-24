@@ -56,6 +56,23 @@ func (h *ExamHandler) List(c *gin.Context) {
 	})
 }
 
+func (h *ExamHandler) Upcoming(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+	exams, err := h.examService.GetUpcoming(limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list upcoming exams"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"items": exams,
+		"meta": gin.H{
+			"limit": limit,
+		},
+	})
+}
+
 func (h *ExamHandler) GetByID(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

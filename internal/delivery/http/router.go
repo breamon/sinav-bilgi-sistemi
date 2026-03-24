@@ -60,6 +60,7 @@ func NewRouter(db *sqlx.DB, redisClient *redis.Client) *gin.Engine {
 		exams := api.Group("/exams")
 		{
 			exams.GET("", examHandler.List)
+			exams.GET("/upcoming", examHandler.Upcoming)
 			exams.GET("/:id", examHandler.GetByID)
 
 			admin := exams.Group("")

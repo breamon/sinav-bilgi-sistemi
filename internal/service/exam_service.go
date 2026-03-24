@@ -45,7 +45,7 @@ func (s *ExamService) Create(exam *domain.Exam) error {
 		return err
 	}
 
-	s.invalidateListCache()
+	s.invalidateCache()
 	return nil
 }
 
@@ -72,6 +72,31 @@ func (s *ExamService) List(page, limit int, source, status string) ([]domain.Exa
 	}
 
 	exams, err := s.examRepo.List(page, limit, source, status)
+	if err != nil {
+		return nil, err
+	}
+
+	s.setCachedList(cacheKey, exams)
+
+	return exams, nil
+}
+
+func (s *ExamService) GetUpcoming(limit int) ([]domain.Exam, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	if limit > 100 {
+		limit = 100
+	}
+
+	cacheKey := fmt.Sprintf("exams:upcoming:limit:%d", limit)
+
+	if exams, ok := s.getCachedList(cacheKey); ok {
+		return exams, nil
+	}
+
+	exams, err := s.examRepo.GetUpcoming(limit)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +139,7 @@ func (s *ExamService) Update(exam *domain.Exam) error {
 		return err
 	}
 
-	s.invalidateListCache()
+	s.invalidateCache()
 	return nil
 }
 
@@ -127,7 +152,7 @@ func (s *ExamService) Delete(id int64) error {
 		return err
 	}
 
-	s.invalidateListCache()
+	s.invalidateCache()
 	return nil
 }
 
@@ -176,14 +201,14 @@ func (s *ExamService) setCachedList(key string, exams []domain.Exam) {
 	_ = s.redisClient.Set(ctx, key, payload, 0).Err()
 }
 
-func (s *ExamService) invalidateListCache() {
+func (s *ExamService) invalidateCache() {
 	if s.redisClient == nil {
 		return
 	}
 
 	ctx := context.Background()
 
-	keys, err := s.redisClient.Keys(ctx, "exams:list:*").Result()
+	keys, err := s.redisClient.Keys(ctx, "exams:*").Result()
 	if err != nil || len(keys) == 0 {
 		return
 	}
