@@ -18,15 +18,29 @@ func NewExamRepository(db *sqlx.DB) *ExamRepository {
 
 func (r *ExamRepository) Create(exam *domain.Exam) error {
 	query := `
-		INSERT INTO exams (source, title, status)
-		VALUES ($1,$2,$3)
+		INSERT INTO exams (
+			source,
+			external_id,
+			title,
+			application_start_date,
+			application_end_date,
+			exam_date,
+			result_date,
+			status
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING id, created_at, updated_at
 	`
 
 	return r.db.QueryRowx(
 		query,
 		exam.Source,
+		exam.ExternalID,
 		exam.Title,
+		exam.ApplicationStartDate,
+		exam.ApplicationEndDate,
+		exam.ExamDate,
+		exam.ResultDate,
 		exam.Status,
 	).Scan(&exam.ID, &exam.CreatedAt, &exam.UpdatedAt)
 }
@@ -35,7 +49,18 @@ func (r *ExamRepository) List(page, limit int, source, status string) ([]domain.
 	var exams []domain.Exam
 
 	baseQuery := `
-		SELECT id, source, external_id, title, status, created_at, updated_at
+		SELECT
+			id,
+			source,
+			external_id,
+			title,
+			application_start_date,
+			application_end_date,
+			exam_date,
+			result_date,
+			status,
+			created_at,
+			updated_at
 		FROM exams
 	`
 
@@ -71,7 +96,18 @@ func (r *ExamRepository) GetByID(id int64) (*domain.Exam, error) {
 	var exam domain.Exam
 
 	query := `
-		SELECT id, source, external_id, title, status, created_at, updated_at
+		SELECT
+			id,
+			source,
+			external_id,
+			title,
+			application_start_date,
+			application_end_date,
+			exam_date,
+			result_date,
+			status,
+			created_at,
+			updated_at
 		FROM exams
 		WHERE id = $1
 	`
@@ -87,18 +123,29 @@ func (r *ExamRepository) GetByID(id int64) (*domain.Exam, error) {
 func (r *ExamRepository) Update(exam *domain.Exam) error {
 	query := `
 		UPDATE exams
-		SET source = $1,
-		    title = $2,
-		    status = $3,
-		    updated_at = NOW()
-		WHERE id = $4
+		SET
+			source = $1,
+			external_id = $2,
+			title = $3,
+			application_start_date = $4,
+			application_end_date = $5,
+			exam_date = $6,
+			result_date = $7,
+			status = $8,
+			updated_at = NOW()
+		WHERE id = $9
 		RETURNING updated_at
 	`
 
 	return r.db.QueryRowx(
 		query,
 		exam.Source,
+		exam.ExternalID,
 		exam.Title,
+		exam.ApplicationStartDate,
+		exam.ApplicationEndDate,
+		exam.ExamDate,
+		exam.ResultDate,
 		exam.Status,
 		exam.ID,
 	).Scan(&exam.UpdatedAt)
@@ -112,11 +159,24 @@ func (r *ExamRepository) Delete(id int64) error {
 
 func (r *ExamRepository) UpsertBySourceAndExternalID(exam *domain.Exam) error {
 	query := `
-		INSERT INTO exams (source, external_id, title, status)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO exams (
+			source,
+			external_id,
+			title,
+			application_start_date,
+			application_end_date,
+			exam_date,
+			result_date,
+			status
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL
 		DO UPDATE SET
 			title = EXCLUDED.title,
+			application_start_date = EXCLUDED.application_start_date,
+			application_end_date = EXCLUDED.application_end_date,
+			exam_date = EXCLUDED.exam_date,
+			result_date = EXCLUDED.result_date,
 			status = EXCLUDED.status,
 			updated_at = NOW()
 		RETURNING id, created_at, updated_at
@@ -127,6 +187,10 @@ func (r *ExamRepository) UpsertBySourceAndExternalID(exam *domain.Exam) error {
 		exam.Source,
 		exam.ExternalID,
 		exam.Title,
+		exam.ApplicationStartDate,
+		exam.ApplicationEndDate,
+		exam.ExamDate,
+		exam.ResultDate,
 		exam.Status,
 	).Scan(&exam.ID, &exam.CreatedAt, &exam.UpdatedAt)
 }
