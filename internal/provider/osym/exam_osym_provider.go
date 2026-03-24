@@ -48,63 +48,82 @@ func (p *ExamOSYMProvider) FetchExams() ([]domain.Exam, error) {
 		return nil, err
 	}
 
-	lines := normalizeLines(doc.Text())
-	return p.extractExams(lines), nil
+	return p.extractExamsFromCalendarPage(doc), nil
 }
 
-func (p *ExamOSYMProvider) extractExams(lines []string) []domain.Exam {
-	exams := make([]domain.Exam, 0)
+func (p *ExamOSYMProvider) extractExamsFromCalendarPage(doc *goquery.Document) []domain.Exam {
+	pageText := cleanText(doc.Text())
+
 	seen := make(map[string]bool)
+	exams := make([]domain.Exam, 0)
 
-	for i := 0; i < len(lines); i++ {
-		if !isOSYMExamTitle(lines[i]) {
-			continue
-		}
+	patterns := []string{
+		`2026-MSÜ`,
+		`2026-GUY $begin:math:text$ÖN BAŞVURU$end:math:text$`,
+		`2026-GUY`,
+		`2026-YÖKDİL/1`,
+		`2026-MEB-EKYS`,
+		`2026-TUS 1\. Dönem`,
+		`2026-STS Tıp Doktorluğu 1\. Dönem`,
+		`2026-DİB-MBSTS`,
+		`2026-YDS/1`,
+		`2026-TR-YÖS/1`,
+		`2026-EKPSS`,
+		`2026-EKPSS/KURA`,
+		`2026-HMGS/1`,
+		`2026-DUS 1\.Dönem`,
+		`2026-STS Diş Hekimliği 1\.Dönem`,
+		`2026-YDUS`,
+		`2026-ALES/1`,
+		`2026-STS Öğretmenlik`,
+		`2026-YKS 1\. Oturum $begin:math:text$TYT$end:math:text$`,
+		`2026-YKS 2\. Oturum $begin:math:text$AYT$end:math:text$`,
+		`2026-YKS 3\. Oturum $begin:math:text$YDT$end:math:text$`,
+		`2026-MEB-AGS $begin:math:text$Akademi Giriş Sınavı \\\(AGS$end:math:text$, Öğretmenlik Alan Bilgisi Testi $begin:math:text$ÖABT$end:math:text$\)`,
+		`2026-DGS`,
+		`2026-ALES/2`,
+		`2026-YÖKDİL/2`,
+		`2026-ÖZYES`,
+		`2026-TUS 2\. Dönem`,
+		`2026-STS Tıp Doktorluğu 2\. Dönem`,
+		`2026-KPSS Lisans $begin:math:text$Genel Yetenek\-Genel Kültür$end:math:text$`,
+		`2026-KPSS Lisans $begin:math:text$Alan Bilgisi$end:math:text$ 1\. gün`,
+		`2026-KPSS Lisans $begin:math:text$Alan Bilgisi$end:math:text$ 2\. gün`,
+		`2026-HMGS/2`,
+		`2026-İYÖS`,
+		`2026-KPSS Ön Lisans`,
+		`2026-TR-YÖS/2`,
+		`2026-BKUBTS`,
+		`2026-KPSS Ortaöğretim`,
+		`2026-DUS 2\.Dönem`,
+		`2026-STS Diş Hekimliği 2\.Dönem`,
+		`2026-KPSS Din Hizmetleri Alan Bilgisi Testi $begin:math:text$DHBT$end:math:text$`,
+		`2026-EUS`,
+		`2026-STS Eczacılık`,
+		`2026-YDS/2`,
+		`2026-ALES/3`,
+	}
 
-		title := cleanExamTitle(lines[i])
-		externalID := slugify(title)
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindAllString(pageText, -1)
 
-		if seen[externalID] {
-			continue
-		}
-		seen[externalID] = true
+		for _, match := range matches {
+			title := strings.TrimSpace(match)
+			externalID := slugify(title)
 
-		exam := domain.Exam{
-			Source:     "osym",
-			ExternalID: stringPtr(externalID),
-			Title:      title,
-			Status:     "published",
-		}
-
-		j := i + 1
-		for j < len(lines) && !isOSYMExamTitle(lines[j]) {
-			switch lines[j] {
-			case "Sınav Tarihi:":
-				if j+1 < len(lines) {
-					exam.ExamDate = parseOSYMDate(lines[j+1])
-					j++
-				}
-			case "Başvuru Tarihleri:":
-				if j+1 < len(lines) {
-					exam.ApplicationStartDate = parseOSYMDate(lines[j+1])
-					j++
-				}
-				if j+1 < len(lines) && !isSectionLabel(lines[j+1]) {
-					exam.ApplicationEndDate = parseOSYMDate(lines[j+1])
-					j++
-				}
-			case "Sonuç Tarihi:":
-				if j+1 < len(lines) {
-					exam.ResultDate = parseOSYMDate(lines[j+1])
-					j++
-				}
+			if seen[externalID] {
+				continue
 			}
+			seen[externalID] = true
 
-			j++
+			exams = append(exams, domain.Exam{
+				Source:     "osym",
+				ExternalID: stringPtr(externalID),
+				Title:      title,
+				Status:     "published",
+			})
 		}
-
-		exams = append(exams, exam)
-		i = j - 1
 	}
 
 	if len(exams) == 0 {
@@ -128,81 +147,16 @@ func (p *ExamOSYMProvider) extractExams(lines []string) []domain.Exam {
 	return exams
 }
 
-func normalizeLines(text string) []string {
-	raw := strings.Split(text, "\n")
-	lines := make([]string, 0, len(raw))
+func cleanText(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\t", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
 
-	for _, line := range raw {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		line = collapseSpaces(line)
-		if line == "" {
-			continue
-		}
-
-		lines = append(lines, line)
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
 	}
 
-	return lines
-}
-
-func collapseSpaces(s string) string {
-	return strings.Join(strings.Fields(s), " ")
-}
-
-func isOSYMExamTitle(line string) bool {
-	// İlk sürüm: ÖSYM takvimindeki ana başlık satırları
-	// örn: 2026-MSÜ, 2026-YÖKDİL/1, 2026-TUS 1. Dönem
-	return strings.HasPrefix(line, "2026-")
-}
-
-func cleanExamTitle(line string) string {
-	return strings.TrimSpace(line)
-}
-
-func isSectionLabel(line string) bool {
-	switch line {
-	case "Sınav Tarihi:", "Başvuru Tarihleri:", "Geç Başvuru Günü:", "Sonuç Tarihi:":
-		return true
-	default:
-		return false
-	}
-}
-
-func parseOSYMDate(value string) *time.Time {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-
-	layouts := []string{
-		"02.01.2006 15:04",
-		"02.01.2006",
-	}
-
-	for _, layout := range layouts {
-		if t, err := time.Parse(layout, value); err == nil {
-			return &t
-		}
-	}
-
-	// "04.02.2026 23:59" gibi değerlerin yanında bazen fazladan metin olabilir.
-	re := regexp.MustCompile(`\d{2}\.\d{2}\.\d{4}( \d{2}:\d{2})?`)
-	match := re.FindString(value)
-	if match == "" {
-		return nil
-	}
-
-	for _, layout := range layouts {
-		if t, err := time.Parse(layout, match); err == nil {
-			return &t
-		}
-	}
-
-	return nil
+	return strings.TrimSpace(s)
 }
 
 func slugify(s string) string {
