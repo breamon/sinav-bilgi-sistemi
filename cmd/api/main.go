@@ -38,7 +38,7 @@ func main() {
 	}
 	defer redisClient.Close()
 
-	router := app.BuildRouter(db)
+	router := app.BuildRouter(db, redisClient)
 
 	interval, err := time.ParseDuration(cfg.ExamImportInterval)
 	if err != nil {
@@ -51,6 +51,7 @@ func main() {
 	examScheduler := service.NewExamSchedulerService(
 		examRepo,
 		importLogRepo,
+		redisClient,
 		appLogger,
 		interval,
 	)

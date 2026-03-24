@@ -11,9 +11,10 @@ import (
 	"github.com/breamon/sinav-bilgi-sistemi/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/redis/go-redis/v9"
 )
 
-func NewRouter(db *sqlx.DB) *gin.Engine {
+func NewRouter(db *sqlx.DB, redisClient *redis.Client) *gin.Engine {
 	r := gin.Default()
 
 	healthHandler := handler.NewHealthHandler()
@@ -24,7 +25,7 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 	authHandler := handler.NewAuthHandler(authService, os.Getenv("JWT_SECRET"))
 
 	examRepo := postgres.NewExamRepository(db)
-	examService := service.NewExamService(examRepo)
+	examService := service.NewExamService(examRepo, redisClient)
 	examHandler := handler.NewExamHandler(examService)
 
 	importLogRepo := postgres.NewImportLogRepository(db)
@@ -34,8 +35,8 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 	examMockProvider := mock.NewExamMockProvider()
 	examOSYMProvider := osym.NewExamOSYMProvider()
 
-	examMockImportService := service.NewExamImportService(examRepo, examMockProvider, "mock")
-	examOSYMImportService := service.NewExamImportService(examRepo, examOSYMProvider, "osym")
+	examMockImportService := service.NewExamImportService(examRepo, examMockProvider, "mock", redisClient)
+	examOSYMImportService := service.NewExamImportService(examRepo, examOSYMProvider, "osym", redisClient)
 
 	examMockImportHandler := handler.NewExamImportHandler(examMockImportService, importLogService)
 	examOSYMImportHandler := handler.NewExamImportHandler(examOSYMImportService, importLogService)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/provider/osym"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/repository/postgres"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -18,11 +19,12 @@ type ExamSchedulerService struct {
 func NewExamSchedulerService(
 	examRepo *postgres.ExamRepository,
 	importLogRepo *postgres.ImportLogRepository,
+	redisClient *redis.Client,
 	logger *zap.Logger,
 	interval time.Duration,
 ) *ExamSchedulerService {
 	osymProvider := osym.NewExamOSYMProvider()
-	importService := NewExamImportService(examRepo, osymProvider, "osym")
+	importService := NewExamImportService(examRepo, osymProvider, "osym", redisClient)
 	importLogService := NewImportLogService(importLogRepo)
 
 	return &ExamSchedulerService{
