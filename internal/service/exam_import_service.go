@@ -7,17 +7,20 @@ import (
 )
 
 type ExamImportService struct {
-	examRepo *postgres.ExamRepository
-	provider provider.ExamProvider
+	examRepo     *postgres.ExamRepository
+	provider     provider.ExamProvider
+	providerName string
 }
 
 func NewExamImportService(
 	examRepo *postgres.ExamRepository,
 	provider provider.ExamProvider,
+	providerName string,
 ) *ExamImportService {
 	return &ExamImportService{
-		examRepo: examRepo,
-		provider: provider,
+		examRepo:     examRepo,
+		provider:     provider,
+		providerName: providerName,
 	}
 }
 
@@ -34,4 +37,8 @@ func (s *ExamImportService) Import() ([]domain.Exam, error) {
 	}
 
 	return exams, nil
+}
+
+func (s *ExamImportService) ProviderName() string {
+	return s.providerName
 }

@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	AppEnv   string
-	AppPort  string
-	Postgres PostgresConfig
-	Redis    RedisConfig
+	AppEnv             string
+	AppPort            string
+	ExamImportInterval string
+	Postgres           PostgresConfig
+	Redis              RedisConfig
 }
 
 type PostgresConfig struct {
@@ -40,8 +41,9 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		AppEnv:  getEnv("APP_ENV", "development"),
-		AppPort: getEnv("APP_PORT", "8080"),
+		AppEnv:             getEnv("APP_ENV", "development"),
+		AppPort:            getEnv("APP_PORT", "8080"),
+		ExamImportInterval: getEnv("EXAM_IMPORT_INTERVAL", "1h"),
 		Postgres: PostgresConfig{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),
 			Port:     getEnv("POSTGRES_PORT", "5432"),

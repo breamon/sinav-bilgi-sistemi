@@ -2,14 +2,16 @@ package main
 
 import (
 	"log"
-
-	"go.uber.org/zap"
+	"time"
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/app"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/config"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/infrastructure/cache"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/infrastructure/database"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/infrastructure/logger"
+	"github.com/breamon/sinav-bilgi-sistemi/internal/repository/postgres"
+	"github.com/breamon/sinav-bilgi-sistemi/internal/service"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -37,8 +39,24 @@ func main() {
 	defer redisClient.Close()
 
 	router := app.BuildRouter(db)
-	application := app.New(router, db, redisClient, appLogger, cfg.AppPort)
 
+	interval, err := time.ParseDuration(cfg.ExamImportInterval)
+	if err != nil {
+		appLogger.Fatal("invalid exam import interval", zap.Error(err))
+	}
+
+	examRepo := postgres.NewExamRepository(db)
+	importLogRepo := postgres.NewImportLogRepository(db)
+
+	examScheduler := service.NewExamSchedulerService(
+		examRepo,
+		importLogRepo,
+		appLogger,
+		interval,
+	)
+	examScheduler.Start()
+
+	application := app.New(router, db, redisClient, appLogger, cfg.AppPort)
 	if err := application.Run(); err != nil {
 		appLogger.Fatal("server run error", zap.Error(err))
 	}

@@ -27,25 +27,23 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 	examService := service.NewExamService(examRepo)
 	examHandler := handler.NewExamHandler(examService)
 
-	// Providers
+	importLogRepo := postgres.NewImportLogRepository(db)
+	importLogService := service.NewImportLogService(importLogRepo)
+	importLogHandler := handler.NewImportLogHandler(importLogService)
+
 	examMockProvider := mock.NewExamMockProvider()
 	examOSYMProvider := osym.NewExamOSYMProvider()
 
-	// Import services
-	examMockImportService := service.NewExamImportService(examRepo, examMockProvider)
-	examOSYMImportService := service.NewExamImportService(examRepo, examOSYMProvider)
+	examMockImportService := service.NewExamImportService(examRepo, examMockProvider, "mock")
+	examOSYMImportService := service.NewExamImportService(examRepo, examOSYMProvider, "osym")
 
-	// Handlers
-	examMockImportHandler := handler.NewExamImportHandler(examMockImportService)
-	examOSYMImportHandler := handler.NewExamImportHandler(examOSYMImportService)
+	examMockImportHandler := handler.NewExamImportHandler(examMockImportService, importLogService)
+	examOSYMImportHandler := handler.NewExamImportHandler(examOSYMImportService, importLogService)
 
 	authMiddleware := middleware.AuthMiddleware(os.Getenv("JWT_SECRET"))
 	adminOnlyMiddleware := middleware.AdminOnlyMiddleware()
 
-	// health
 	r.GET("/health", healthHandler.HealthCheck)
-
-	// 🔥 mock osym endpoint
 	r.GET("/mock/osym/exams", mockOSYMHandler.GetExams)
 
 	api := r.Group("/api/v1")
@@ -71,6 +69,12 @@ func NewRouter(db *sqlx.DB) *gin.Engine {
 				admin.POST("/import/mock", examMockImportHandler.Import)
 				admin.POST("/import/osym", examOSYMImportHandler.Import)
 			}
+		}
+
+		importLogs := api.Group("/import-logs")
+		importLogs.Use(authMiddleware, adminOnlyMiddleware)
+		{
+			importLogs.GET("", importLogHandler.List)
 		}
 	}
 
