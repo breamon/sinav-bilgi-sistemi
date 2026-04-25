@@ -1,5 +1,4 @@
 Sınav Bilgi Sistemi
-
 sinav-bilgi-sistemi, Go ile geliştirilen, sınav verilerini merkezi olarak toplayan, yöneten ve uygulamaya sunan bir backend servisidir.
 
 Projenin amacı:
@@ -107,3 +106,5 @@ Bir sonraki hedef, sınavlara ait:
 	•	sonuç tarihi
 
 alanlarını güvenilir biçimde parse ederek sisteme eklemektir.
+## OSYM Import
+OSYM sınav verileri için provider ve import servisi eklendi.
