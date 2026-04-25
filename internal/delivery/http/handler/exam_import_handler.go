@@ -8,47 +8,24 @@ import (
 )
 
 type ExamImportHandler struct {
-	importService    *service.ExamImportService
-	importLogService *service.ImportLogService
+	examImportService *service.ExamImportService
 }
 
-func NewExamImportHandler(
-	importService *service.ExamImportService,
-	importLogService *service.ImportLogService,
-) *ExamImportHandler {
+func NewExamImportHandler(examImportService *service.ExamImportService) *ExamImportHandler {
 	return &ExamImportHandler{
-		importService:    importService,
-		importLogService: importLogService,
+		examImportService: examImportService,
 	}
 }
 
-func (h *ExamImportHandler) Import(c *gin.Context) {
-	exams, err := h.importService.Import()
-	if err != nil {
-		errMsg := err.Error()
-		_ = h.importLogService.Create(
-			h.importService.ProviderName(),
-			"failed",
-			0,
-			&errMsg,
-		)
-
+func (h *ExamImportHandler) ImportOSYM(c *gin.Context) {
+	if err := h.examImportService.ImportOSYM(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "failed to import exams",
-			"details": err.Error(),
+			"error": err.Error(),
 		})
 		return
 	}
 
-	_ = h.importLogService.Create(
-		h.importService.ProviderName(),
-		"success",
-		len(exams),
-		nil,
-	)
-
 	c.JSON(http.StatusOK, gin.H{
-		"message": "exams imported",
-		"items":   exams,
+		"message": "OSYM exams imported successfully",
 	})
 }

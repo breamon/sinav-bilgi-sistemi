@@ -10,10 +10,10 @@ import (
 )
 
 type ExamSchedulerService struct {
-	importService    *ExamImportService
-	importLogService *ImportLogService
-	logger           *zap.Logger
-	interval         time.Duration
+	importService *ExamImportService
+	importLogRepo *postgres.ImportLogRepository
+	logger        *zap.Logger
+	interval      time.Duration
 }
 
 func NewExamSchedulerService(
@@ -23,56 +23,50 @@ func NewExamSchedulerService(
 	logger *zap.Logger,
 	interval time.Duration,
 ) *ExamSchedulerService {
-	osymProvider := osym.NewExamOSYMProvider()
-	importService := NewExamImportService(examRepo, osymProvider, "osym", redisClient)
-	importLogService := NewImportLogService(importLogRepo)
+	osymProvider := osym.NewOSYMProvider()
+
+	importService := NewExamImportService(
+		examRepo,
+		osymProvider,
+		"osym",
+		redisClient,
+	)
 
 	return &ExamSchedulerService{
-		importService:    importService,
-		importLogService: importLogService,
-		logger:           logger,
-		interval:         interval,
+		importService: importService,
+		importLogRepo: importLogRepo,
+		logger:        logger,
+		interval:      interval,
 	}
 }
 
 func (s *ExamSchedulerService) Start() {
 	go func() {
-		s.logger.Info("exam scheduler started", zap.Duration("interval", s.interval))
-
-		time.Sleep(5 * time.Second)
-
-		s.runImport()
-
 		ticker := time.NewTicker(s.interval)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			s.runImport()
+		for {
+			if err := s.RunOnce(); err != nil {
+				s.logger.Error("exam import failed", zap.Error(err))
+			}
+
+			<-ticker.C
 		}
 	}()
 }
 
-func (s *ExamSchedulerService) runImport() {
-	exams, err := s.importService.Import()
-	if err != nil {
-		errMsg := err.Error()
-		_ = s.importLogService.Create(
-			s.importService.ProviderName(),
-			"failed",
-			0,
-			&errMsg,
-		)
-
-		s.logger.Error("scheduled exam import failed", zap.Error(err))
-		return
-	}
-
-	_ = s.importLogService.Create(
-		s.importService.ProviderName(),
-		"success",
-		len(exams),
-		nil,
+func (s *ExamSchedulerService) RunOnce() error {
+	s.logger.Info("exam import started",
+		zap.String("provider", s.importService.ProviderName()),
 	)
 
-	s.logger.Info("scheduled exam import completed", zap.Int("count", len(exams)))
+	if err := s.importService.Import(); err != nil {
+		return err
+	}
+
+	s.logger.Info("exam import finished",
+		zap.String("provider", s.importService.ProviderName()),
+	)
+
+	return nil
 }
