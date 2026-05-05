@@ -18,14 +18,18 @@ func NewExamImportHandler(examImportService *service.ExamImportService) *ExamImp
 }
 
 func (h *ExamImportHandler) ImportOSYM(c *gin.Context) {
-	if err := h.examImportService.ImportOSYM(); err != nil {
+	result, err := h.examImportService.ImportOSYM()
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
+			"message": "OSYM exam import failed",
+			"error":   err.Error(),
+			"result":  result,
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "OSYM exams imported successfully",
+		"result":  result,
 	})
 }

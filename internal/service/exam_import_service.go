@@ -1,16 +1,23 @@
 package service
 
 import (
-	"errors"
+	"context"
 
 	"github.com/breamon/sinav-bilgi-sistemi/internal/domain"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/repository/postgres"
-	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 )
 
 type ExamProvider interface {
 	FetchExams() ([]domain.Exam, error)
+}
+
+type ImportResult struct {
+	Provider string `json:"provider"`
+	Total    int    `json:"total"`
+	Inserted int    `json:"inserted"`
+	Updated  int    `json:"updated"`
+	Failed   int    `json:"failed"`
 }
 
 type ExamImportService struct {
@@ -35,37 +42,59 @@ func NewExamImportService(
 }
 
 func (s *ExamImportService) Import() error {
+	_, err := s.ImportWithResult()
+	return err
+}
+
+func (s *ExamImportService) ImportOSYM() (*ImportResult, error) {
+	return s.ImportWithResult()
+}
+
+func (s *ExamImportService) ImportWithResult() (*ImportResult, error) {
 	exams, err := s.provider.FetchExams()
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	result := &ImportResult{
+		Provider: s.providerName,
+		Total:    len(exams),
 	}
 
 	for _, exam := range exams {
-		if err := s.examRepo.Create(&exam); err != nil {
-			if isDuplicateExamError(err) {
-				continue
-			}
+		inserted, err := s.examRepo.UpsertImportedExam(&exam)
+		if err != nil {
+			result.Failed++
+			return result, err
+		}
 
-			return err
+		if inserted {
+			result.Inserted++
+		} else {
+			result.Updated++
 		}
 	}
 
-	return nil
-}
+	s.clearExamCache()
 
-func (s *ExamImportService) ImportOSYM() error {
-	return s.Import()
+	return result, nil
 }
 
 func (s *ExamImportService) ProviderName() string {
 	return s.providerName
 }
 
-func isDuplicateExamError(err error) bool {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) {
-		return pqErr.Code == "23505"
+func (s *ExamImportService) clearExamCache() {
+	if s.redisClient == nil {
+		return
 	}
 
-	return false
+	ctx := context.Background()
+
+	keys, err := s.redisClient.Keys(ctx, "exams:*").Result()
+	if err != nil || len(keys) == 0 {
+		return
+	}
+
+	_ = s.redisClient.Del(ctx, keys...).Err()
 }

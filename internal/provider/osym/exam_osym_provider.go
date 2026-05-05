@@ -48,49 +48,171 @@ func (p *OSYMProvider) FetchExams() ([]domain.Exam, error) {
 		return fallbackExams(), err
 	}
 
-	var exams []domain.Exam
-
-	doc.Find("tr").Each(func(i int, row *goquery.Selection) {
-		cells := row.Find("td")
-		if cells.Length() < 2 {
-			return
-		}
-
-		titleText := cleanText(cells.Eq(0).Text())
-		if titleText == "" || strings.Contains(strings.ToLower(titleText), "sınav") && strings.Contains(strings.ToLower(titleText), "tarihi") {
-			return
-		}
-
-		examDateText := cleanText(cells.Eq(1).Text())
-		appDateText := ""
-		if cells.Length() > 2 {
-			appDateText = cleanText(cells.Eq(2).Text())
-		}
-
-		examDate := parseFirstDate(examDateText)
-		appStart, appEnd := parseDateRange(appDateText)
-
-		code := extractExamCode(titleText)
-		title := buildTitle(titleText, code)
-
-		exams = append(exams, domain.Exam{
-			Source:               "osym",
-			ExternalID:           stringPtr("osym-" + slugify(title)),
-			Title:                title,
-			Description:          stringPtr(titleText),
-			Category:             stringPtr(code),
-			Status:               "upcoming",
-			ApplicationStartDate: appStart,
-			ApplicationEndDate:   appEnd,
-			ExamDate:             examDate,
-		})
-	})
+	text := cleanTextWithNewLines(doc.Text())
+	exams := parseCalendarText(text)
 
 	if len(exams) == 0 {
 		return fallbackExams(), nil
 	}
 
 	return exams, nil
+}
+
+func parseCalendarText(text string) []domain.Exam {
+	lines := strings.Split(text, "\n")
+	var exams []domain.Exam
+
+	for i := 0; i < len(lines); i++ {
+		line := cleanText(lines[i])
+
+		if !isExamTitle(line) {
+			continue
+		}
+
+		title := line
+		description := previousUsefulLine(lines, i)
+
+		blockEnd := i + 18
+		if blockEnd > len(lines) {
+			blockEnd = len(lines)
+		}
+
+		block := lines[i:blockEnd]
+
+		examDate := findDateAfterLabel(block, "Sınav Tarihi:")
+		appDates := findDatesAfterLabel(block, "Başvuru Tarihleri:", 2)
+		resultDate := findDateAfterLabel(block, "Sonuç Tarihi:")
+
+		var appStart *time.Time
+		var appEnd *time.Time
+
+		if len(appDates) > 0 {
+			appStart = appDates[0]
+		}
+
+		if len(appDates) > 1 {
+			appEnd = appDates[1]
+		}
+
+		code := extractExamCode(title)
+
+		exams = append(exams, domain.Exam{
+			Source:               "osym",
+			ExternalID:           stringPtr("osym-" + slugify(title)),
+			Title:                title,
+			Description:          stringPtr(description),
+			Category:             stringPtr(code),
+			Status:               "published",
+			ApplicationStartDate: appStart,
+			ApplicationEndDate:   appEnd,
+			ExamDate:             examDate,
+			ResultDate:           resultDate,
+		})
+	}
+
+	return exams
+}
+
+func isExamTitle(value string) bool {
+	if value == "" {
+		return false
+	}
+
+	value = strings.TrimSpace(value)
+
+	re := regexp.MustCompile(`^20\d{2}[- ][A-ZÇĞİÖŞÜa-zçğıöşü0-9/()., -]+$`)
+	if !re.MatchString(value) {
+		return false
+	}
+
+	ignored := []string{
+		"Sınav Tarihi",
+		"Başvuru Tarihleri",
+		"Geç Başvuru Günü",
+		"Sonuç Tarihi",
+	}
+
+	for _, item := range ignored {
+		if strings.Contains(value, item) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func previousUsefulLine(lines []string, index int) string {
+	for i := index - 1; i >= 0 && i >= index-4; i-- {
+		line := cleanText(lines[i])
+		if line == "" {
+			continue
+		}
+
+		if strings.Contains(line, "Sınav Tarihi") ||
+			strings.Contains(line, "Başvuru Tarihleri") ||
+			strings.Contains(line, "Sonuç Tarihi") {
+			continue
+		}
+
+		if isExamTitle(line) {
+			continue
+		}
+
+		return line
+	}
+
+	return ""
+}
+
+func findDateAfterLabel(block []string, label string) *time.Time {
+	dates := findDatesAfterLabel(block, label, 1)
+	if len(dates) == 0 {
+		return nil
+	}
+
+	return dates[0]
+}
+
+func findDatesAfterLabel(block []string, label string, limit int) []*time.Time {
+	var dates []*time.Time
+	found := false
+
+	for _, rawLine := range block {
+		line := cleanText(rawLine)
+
+		if strings.Contains(line, label) {
+			found = true
+			continue
+		}
+
+		if !found {
+			continue
+		}
+
+		if isStopLabel(line) {
+			break
+		}
+
+		date := parseFirstDate(line)
+		if date == nil {
+			continue
+		}
+
+		dates = append(dates, date)
+
+		if len(dates) >= limit {
+			break
+		}
+	}
+
+	return dates
+}
+
+func isStopLabel(value string) bool {
+	return strings.Contains(value, "Sınav Tarihi:") ||
+		strings.Contains(value, "Başvuru Tarihleri:") ||
+		strings.Contains(value, "Geç Başvuru Günü:") ||
+		strings.Contains(value, "Sonuç Tarihi:")
 }
 
 func fallbackExams() []domain.Exam {
@@ -122,6 +244,26 @@ func fallbackExams() []domain.Exam {
 	}
 }
 
+func cleanTextWithNewLines(value string) string {
+	value = strings.ReplaceAll(value, "\u00a0", " ")
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+
+	lines := strings.Split(value, "\n")
+	cleanedLines := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		line = cleanText(line)
+		if line == "" {
+			continue
+		}
+
+		cleanedLines = append(cleanedLines, line)
+	}
+
+	return strings.Join(cleanedLines, "\n")
+}
+
 func cleanText(value string) string {
 	value = strings.ReplaceAll(value, "\u00a0", " ")
 	value = strings.Join(strings.Fields(value), " ")
@@ -143,35 +285,11 @@ func parseFirstDate(value string) *time.Time {
 	return &parsed
 }
 
-func parseDateRange(value string) (*time.Time, *time.Time) {
-	dateRegex := regexp.MustCompile(`\d{2}\.\d{2}\.\d{4}`)
-	matches := dateRegex.FindAllString(value, -1)
-
-	if len(matches) == 0 {
-		return nil, nil
-	}
-
-	start, err := time.Parse("02.01.2006", matches[0])
-	if err != nil {
-		return nil, nil
-	}
-
-	if len(matches) == 1 {
-		return &start, nil
-	}
-
-	end, err := time.Parse("02.01.2006", matches[1])
-	if err != nil {
-		return &start, nil
-	}
-
-	return &start, &end
-}
-
 func extractExamCode(value string) string {
 	knownCodes := []string{
 		"YKS", "KPSS", "ALES", "DGS", "YDS", "e-YDS", "YÖKDİL", "e-YÖKDİL",
 		"TUS", "DUS", "STS", "YDUS", "MSÜ", "MEB-AGS", "TR-YÖS", "HMGS",
+		"EKPSS", "DİB-MBSTS", "İYÖS", "ÖZYES", "BKUBTS", "EUS",
 	}
 
 	upperValue := strings.ToUpper(value)
@@ -188,21 +306,6 @@ func extractExamCode(value string) string {
 	}
 
 	return "OSYM"
-}
-
-func buildTitle(raw string, code string) string {
-	yearRegex := regexp.MustCompile(`20\d{2}`)
-	year := yearRegex.FindString(raw)
-
-	if year != "" && code != "" {
-		return year + " " + code
-	}
-
-	if code != "" {
-		return code
-	}
-
-	return raw
 }
 
 func slugify(value string) string {
