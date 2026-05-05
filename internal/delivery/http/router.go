@@ -53,11 +53,11 @@ func NewRouter(db *sqlx.DB, redisClient *redis.Client) *gin.Engine {
 		exams := api.Group("/exams")
 		{
 			exams.GET("", examHandler.List)
+			exams.GET("/upcoming", examHandler.GetUpcoming)
 			exams.GET("/:id", examHandler.GetByID)
 			exams.POST("", examHandler.Create)
 			exams.PUT("/:id", examHandler.Update)
 			exams.DELETE("/:id", examHandler.Delete)
-
 			exams.POST("/import/osym", examImportHandler.ImportOSYM)
 		}
 	}
