@@ -1,8 +1,11 @@
 package service
 
 import (
+	"errors"
+
 	"github.com/breamon/sinav-bilgi-sistemi/internal/domain"
 	"github.com/breamon/sinav-bilgi-sistemi/internal/repository/postgres"
+	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,6 +42,10 @@ func (s *ExamImportService) Import() error {
 
 	for _, exam := range exams {
 		if err := s.examRepo.Create(&exam); err != nil {
+			if isDuplicateExamError(err) {
+				continue
+			}
+
 			return err
 		}
 	}
@@ -52,4 +59,13 @@ func (s *ExamImportService) ImportOSYM() error {
 
 func (s *ExamImportService) ProviderName() string {
 	return s.providerName
+}
+
+func isDuplicateExamError(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "23505"
+	}
+
+	return false
 }
